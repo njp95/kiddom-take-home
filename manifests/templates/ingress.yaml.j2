@@ -1,0 +1,34 @@
+---
+# Routes pr-<number>.<domain> → api service in this namespace.
+#
+# Production intent:
+#   - cert-manager would auto-issue a TLS cert for each hostname
+#   - external-dns would register the hostname in Route53/Cloudflare
+#   - The PR URL would be posted back to GitHub via the Checks API
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pr-ingress
+  namespace: {{ namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Uncomment in production with cert-manager:
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: pr-{{ pr_number }}.{{ domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 80
+  # Uncomment for TLS in production:
+  # tls:
+  #   - hosts:
+  #       - pr-{{ pr_number }}.{{ domain }}
+  #     secretName: pr-{{ pr_number }}-tls

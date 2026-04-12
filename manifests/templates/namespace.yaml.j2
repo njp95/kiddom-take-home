@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ namespace }}
+  labels:
+    ephemeral-env: "true"
+    pr: "{{ pr_number }}"
+  annotations:
+    ephemeral-env/created-at: "{{ created_at | default('0') }}"
+    ephemeral-env/pr: "{{ pr_number }}"
+    ephemeral-env/ttl-minutes: "{{ ttl_minutes }}"

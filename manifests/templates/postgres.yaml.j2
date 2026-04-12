@@ -1,0 +1,66 @@
+---
+# Secret — holds DB credentials referenced by both postgres and the api
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: {{ namespace }}
+type: Opaque
+stringData:
+  POSTGRES_USER: appuser
+  POSTGRES_PASSWORD: changeme-{{ pr_number }}
+  POSTGRES_DB: appdb
+  DATABASE_URL: "postgresql://appuser:changeme-{{ pr_number }}@postgres:5432/appdb"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: {{ namespace }}
+  labels:
+    app: postgres
+    pr: "{{ pr_number }}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "appuser", "-d", "appdb"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: {{ namespace }}
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

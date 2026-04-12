@@ -1,0 +1,14 @@
+# Secrets — never commit these
+.env
+.env.example
+
+# Tunnel state — regenerated each session (smee) or on demand (ngrok)
+.tunnel-url
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# kind cluster state
+.kube/
