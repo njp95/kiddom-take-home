@@ -1,5 +1,4 @@
-.PHONY: cluster-up cluster-down ingress-up controller tunnel webhook dev \
-        sim-open sim-sync sim-close hosts clean
+.PHONY: cluster-up cluster-down ingress-up controller clean simulate-open simulate-sync simulate-close
 
 CLUSTER_NAME ?= ephemeral-envs
 PR           ?= 1
@@ -8,13 +7,30 @@ PR           ?= 1
 -include .env
 export
 
+# ... existing variables ...
+
+IMAGE_NAME = controller:latest
+
+build:
+	docker build -t $(IMAGE_NAME) -f Dockerfile .
+
+load:
+	kind load docker-image $(IMAGE_NAME) --name $(CLUSTER_NAME)
+
+deploy-controller: build load
+	kubectl apply -f manifests/controller.yaml
+	@echo "✅ Controller deployed to cluster"
+
+# Update your setup to include the deployment
+setup: cluster-up deploy-controller ingress-up
+
 # ── First-time setup ───────────────────────────────────────────────────────────
 
-setup: cluster-up ingress-up
-	@echo ""
-	@echo "✅  Cluster ready. Next steps:"
-	@echo "   1. Fill in .env (copy from .env.example)"
-	@echo "   2. Run: make dev"
+# setup: cluster-up ingress-up
+# 	@echo ""
+# 	@echo "✅  Cluster ready. Next steps:"
+# 	@echo "   1. Fill in .env (copy from .env.example)"
+# 	@echo "   2. Run: make dev"
 
 # ── Cluster lifecycle ──────────────────────────────────────────────────────────
 
@@ -38,44 +54,17 @@ ingress-up:
 controller:
 	cd controller && uvicorn main:app --reload --port 8080
 
-# ── GitHub integration ────────────────────────────────────────────────────────
-
-tunnel:
-	./scripts/start-tunnel.sh
-
-webhook:
-	./scripts/register-webhook.sh
-
-dev:
-	@echo "Start these in separate terminals:"
-	@echo ""
-	@echo "  Terminal 1 — controller:"
-	@echo "    make controller"
-	@echo ""
-	@echo "  Terminal 2 — tunnel:"
-	@echo "    make tunnel"
-	@echo ""
-	@echo "  Terminal 3 — register webhook (after tunnel is up):"
-	@echo "    make webhook"
-	@echo ""
-	@echo "Then open a PR in https://github.com/$$GITHUB_REPO"
-
-# ── Simulate GitHub webhook events (local dev, no tunnel needed) ─────────────
-
-sim-open:
-	./scripts/simulate-pr.sh open $(PR)
-
-sim-sync:
-	./scripts/simulate-pr.sh synchronize $(PR)
-
-sim-close:
-	./scripts/simulate-pr.sh closed $(PR)
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-hosts:
-	./scripts/seed-hosts.sh $(PR)
-
 clean:
 	kubectl get namespaces -o name | grep "namespace/pr-" | xargs -r kubectl delete
 	@echo "✅  All PR namespaces deleted"
+
+# ── Simulate PR webhooks (local dev) ──────────────────────────────────────────
+
+simulate-open:
+	@./scripts/simulate-pr.sh open $(PR)
+
+simulate-sync:
+	@./scripts/simulate-pr.sh sync $(PR)
+
+simulate-close:
+	@./scripts/simulate-pr.sh close $(PR)

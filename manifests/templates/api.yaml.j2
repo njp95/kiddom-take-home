@@ -37,14 +37,12 @@ spec:
 
       containers:
         - name: api
-          # hashicorp/http-echo is a stand-in; replace with your real API image.
-          # It echoes a configurable string so you can verify routing works.
-          image: hashicorp/http-echo:latest
+          image: {{ api.image }}
           args:
             - "-text=Hello from PR #{{ pr_number }} (sha={{ image_tag }})"
-            - "-listen=:5678"
+            - "-listen=:{{ api.port }}"
           ports:
-            - containerPort: 5678
+            - containerPort: {{ api.port }}
           env:
             - name: PR_NUMBER
               value: "{{ pr_number }}"
@@ -54,16 +52,16 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: 5678
+              port: {{ api.port }}
             initialDelaySeconds: 3
             periodSeconds: 5
           resources:
             requests:
-              cpu: "25m"
-              memory: "32Mi"
+              cpu: "{{ api.resources.requests.cpu }}"
+              memory: "{{ api.resources.requests.memory }}"
             limits:
-              cpu: "100m"
-              memory: "64Mi"
+              cpu: "{{ api.resources.limits.cpu }}"
+              memory: "{{ api.resources.limits.memory }}"
 
 ---
 apiVersion: v1
@@ -76,4 +74,4 @@ spec:
     app: api
   ports:
     - port: 80
-      targetPort: 5678
+      targetPort: {{ api.port }}

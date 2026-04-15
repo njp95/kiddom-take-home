@@ -11,7 +11,23 @@ set -euo pipefail
 ACTION="${1:-open}"
 PR_NUMBER="${2:-1}"
 SHA="${3:-$(head -c 4 /dev/urandom | xxd -p)}"
-CONTROLLER_URL="${CONTROLLER_URL:-http://localhost:8080}"
+CONTROLLER_URL="${CONTROLLER_URL:-}"
+
+# If no CONTROLLER_URL is set, port-forward to the in-cluster controller
+if [ -z "$CONTROLLER_URL" ]; then
+  echo "No CONTROLLER_URL set — port-forwarding to lifecycle-controller..."
+  kubectl port-forward deployment/lifecycle-controller 8080:8080 >/dev/null 2>&1 &
+  PF_PID=$!
+  trap 'kill "$PF_PID" 2>/dev/null; wait "$PF_PID" 2>/dev/null' EXIT
+
+  # Wait up to 5s for the port-forward to be ready
+  for i in $(seq 1 10); do
+    if curl -s http://127.0.0.1:8080/health >/dev/null 2>&1; then break; fi
+    sleep 0.5
+  done
+
+  CONTROLLER_URL="http://127.0.0.1:8080"
+fi
 
 # Map friendly aliases → GitHub action strings
 case "$ACTION" in
@@ -44,10 +60,16 @@ EOF
 echo "→ Sending action='${ACTION}' for PR #${PR_NUMBER} (sha=${SHA:0:7}) to ${CONTROLLER_URL}/webhook"
 echo ""
 
-curl -s -X POST "${CONTROLLER_URL}/webhook" \
+RESPONSE=$(curl -s --fail-with-body -X POST "${CONTROLLER_URL}/webhook" \
   -H "Content-Type: application/json" \
   -H "X-GitHub-Event: pull_request" \
-  -d "${PAYLOAD}" | python3 -m json.tool
+  -d "${PAYLOAD}" 2>&1) || {
+  echo "Error: could not reach controller at ${CONTROLLER_URL}"
+  echo "  Is the lifecycle-controller pod running? Try: kubectl get pods"
+  exit 1
+}
+
+echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
 
 echo ""
 echo "Environment URL: http://pr-${PR_NUMBER}.localenv.dev"

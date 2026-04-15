@@ -1,91 +1,58 @@
-"""
-k8s_client.py — thin subprocess wrapper around kubectl.
-
-Production note: swap this out for the official `kubernetes` Python client
-(https://github.com/kubernetes-client/python) or use Helm SDK for richer
-error handling, watch streams, and server-side apply.
-"""
-
-import subprocess
 import logging
 import json
 import tempfile
-import os
 from typing import Optional
+from kubernetes import client, config, utils
+from kubernetes.client.rest import ApiException
 
 log = logging.getLogger(__name__)
 
+# Load config: in-cluster when running in a pod, kubeconfig for local dev
+try:
+    config.load_incluster_config()
+except config.ConfigException:
+    config.load_kube_config()
 
-def _run(args: list[str], input: Optional[str] = None, check: bool = True) -> subprocess.CompletedProcess:
-    log.debug("kubectl %s", " ".join(args))
-    return subprocess.run(
-        ["kubectl", *args],
-        input=input,
-        capture_output=True,
-        text=True,
-        check=check,
-    )
+v1 = client.CoreV1Api()
+custom_objects = client.CustomObjectsApi()
 
+def create_namespace(name: str, labels: dict = None, annotations: dict = None):
+    meta = client.V1ObjectMeta(name=name, labels=labels, annotations=annotations)
+    body = client.V1Namespace(metadata=meta)
+    try:
+        v1.create_namespace(body=body)
+        log.info(f"Created namespace {name}")
+    except ApiException as e:
+        if e.status == 409:
+            log.info(f"Namespace {name} already exists — skipping create")
+        else:
+            raise
 
-# ── Namespace ──────────────────────────────────────────────────────────────────
+def delete_namespace(name: str):
+    try:
+        v1.delete_namespace(name=name)
+        log.info(f"Deleted namespace {name}")
+    except ApiException as e:
+        if e.status != 404: # Ignore 'NotFound'
+            raise
 
-def namespace_exists(name: str) -> bool:
-    result = _run(["get", "namespace", name], check=False)
-    return result.returncode == 0
+def list_pr_namespaces():
+    # Only list namespaces with our specific label 
+    ret = v1.list_namespace(label_selector="ephemeral-env=true")
+    return [{"metadata": {"name": ns.metadata.name, "annotations": ns.metadata.annotations}} 
+            for ns in ret.items]
 
-
-def create_namespace(name: str, labels: dict = None, annotations: dict = None) -> None:
-    """Idempotently create a namespace with optional labels/annotations."""
-    if namespace_exists(name):
-        log.info("Namespace %s already exists — skipping create", name)
-        return
-
-    manifest = {
-        "apiVersion": "v1",
-        "kind": "Namespace",
-        "metadata": {
-            "name": name,
-            "labels": labels or {},
-            "annotations": annotations or {},
-        },
-    }
-    apply_manifest(json.dumps(manifest))
-    log.info("Created namespace %s", name)
-
-
-def delete_namespace(name: str) -> None:
-    """Delete a namespace and all resources inside it."""
-    if not namespace_exists(name):
-        log.info("Namespace %s not found — nothing to delete", name)
-        return
-    _run(["delete", "namespace", name, "--wait=false"])
-    log.info("Deleted namespace %s", name)
-
-
-def list_pr_namespaces() -> list[dict]:
-    """Return all namespaces tagged with ephemeral-env=true as dicts."""
-    result = _run([
-        "get", "namespaces",
-        "-l", "ephemeral-env=true",
-        "-o", "json",
-    ])
-    data = json.loads(result.stdout)
-    return data.get("items", [])
-
-
-# ── Manifests ─────────────────────────────────────────────────────────────────
-
-def apply_manifest(yaml_or_json: str, namespace: Optional[str] = None) -> None:
-    """Apply a manifest string (YAML or JSON) via kubectl apply."""
-    args = ["apply", "-f", "-"]
-    if namespace:
-        args += ["-n", namespace]
-    result = _run(args, input=yaml_or_json)
-    log.debug(result.stdout)
-
-
-def apply_file(path: str, namespace: Optional[str] = None) -> None:
-    args = ["apply", "-f", path]
-    if namespace:
-        args += ["-n", namespace]
-    _run(args)
+def apply_manifest(yaml_content: str, namespace: str):
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml') as f:
+        f.write(yaml_content)
+        f.flush()
+        try:
+            # Use the ApiClient to apply the manifest
+            utils.create_from_yaml(client.ApiClient(), f.name, namespace=namespace)
+        except utils.FailToCreateError as e:
+            # Check if the failure is just because the resource already exists
+            for failure in e.api_exceptions:
+                if failure.status == 409:
+                    log.debug("Resource already exists, skipping...")
+                    continue
+                raise e
