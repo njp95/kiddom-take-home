@@ -22,7 +22,7 @@ postgres:
   image: postgres:15
   resources:
     requests:
-      cpu: "50m"
+      cpu: "60m"
       memory: "128Mi"
     limits:
       cpu: "250m"
