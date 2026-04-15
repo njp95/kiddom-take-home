@@ -84,7 +84,7 @@ def _verify_signature(body: bytes, sig_header: str) -> None:
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
 
-def _provision(pr_number: int, image_tag: str = "latest") -> str:
+def _provision(pr_number: int, image_tag: str = "latest", head_sha: str = "main") -> str:
     """Create/update all resources for a PR. Returns the environment URL."""
     ctx = renderer.build_ctx(pr_number, image_tag)
     namespace = ctx["namespace"]
@@ -99,8 +99,8 @@ def _provision(pr_number: int, image_tag: str = "latest") -> str:
         },
     )
 
-    # Render and apply all manifests (postgres, api, ingress)
-    for manifest_yaml in renderer.render_all(ctx):
+    # Fetch templates and values from the PR branch, then apply in dependency order
+    for manifest_yaml in renderer.render_all(ctx, ref=head_sha):
         k8s.apply_manifest(manifest_yaml, namespace=namespace)
 
     url = f"http://pr-{pr_number}.{config.INGRESS_DOMAIN}"
@@ -131,8 +131,10 @@ async def webhook(
     action = payload.get("action")
     pr = payload.get("pull_request", {})
     pr_number = pr.get("number")
-    # Use the head SHA as the image tag so each push can deploy a distinct image
-    image_tag = pr.get("head", {}).get("sha", "latest")[:7]
+    # Full SHA is used to fetch templates/values from the correct commit.
+    # The 7-char prefix is used as the image tag for the application container.
+    head_sha = pr.get("head", {}).get("sha", "main")
+    image_tag = head_sha[:7]
 
     if not pr_number:
         raise HTTPException(status_code=400, detail="Missing pull_request.number")
@@ -140,7 +142,7 @@ async def webhook(
     log.info("PR #%d — action=%s  sha=%s", pr_number, action, image_tag)
 
     if action in ("opened", "reopened", "synchronize"):
-        url = _provision(pr_number, image_tag)
+        url = _provision(pr_number, image_tag, head_sha)
         return {"status": "provisioned", "pr": pr_number, "url": url}
 
     elif action == "closed":

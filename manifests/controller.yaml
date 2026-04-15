@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: controller-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: controller-role
+rules:
+- apiGroups: [""]
+  # Added "secrets" to this list
+  resources: ["namespaces", "pods", "services", "configmaps", "secrets"] 
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: controller-role-binding
+subjects:
+- kind: ServiceAccount
+  name: controller-sa
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: controller-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lifecycle-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: controller
+  template:
+    metadata:
+      labels:
+        app: controller
+    spec:
+      serviceAccountName: controller-sa
+      containers:
+      - name: controller
+        image: controller:latest # Build this locally and load into kind
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+        env:
+        - name: INGRESS_DOMAIN
+          value: "localenv.dev"
+        - name: TTL_MINUTES
+          value: "60"
+        - name: GITHUB_REPO
+          value: "njp95/kiddom-take-home"
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: controller-secrets
+              key: GITHUB_TOKEN
+        # Overrides the git ref used to fetch templates and values. Set to "main"
+        # here so that simulate-pr.sh (which generates synthetic SHAs) still works
+        # against a real cluster. Remove this in production to fetch from the PR branch.
+        - name: TEMPLATE_REF
+          value: "main"
+
+      - name: smee-sidecar
+        image: node:18-slim
+        # Install smee-client and point it to the localhost address of the other container
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            npm install --global smee-client
+            smee --url $(SMEE_URL) --target http://127.0.0.1:8080/webhook
+        env:
+        - name: SMEE_URL
+          value: "https://smee.io/QhNJ9gZeKQ1FjA7"

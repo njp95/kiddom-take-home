@@ -1,0 +1,29 @@
+# values.yaml — configurable defaults for ephemeral PR environments.
+#
+# This file is fetched from the PR branch at provision time, so changes
+# here take effect in the environment spun up for that PR — no controller
+# rebuild required.
+
+api:
+  # Replace with your real application image. The controller uses the PR's
+  # head SHA as the image tag, so your CI pipeline should build and push
+  # images tagged with the short SHA before the webhook fires.
+  image: hashicorp/http-echo:latest
+  port: 5678
+  resources:
+    requests:
+      cpu: "25m"
+      memory: "32Mi"
+    limits:
+      cpu: "100m"
+      memory: "64Mi"
+
+postgres:
+  image: postgres:15
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
