@@ -17,6 +17,7 @@ api:
     limits:
       cpu: "100m"
       memory: "64Mi"
+  message: "Hello from PR #{{ pr_number }} (sha={{ image_tag }})"
 
 postgres:
   image: postgres:15
