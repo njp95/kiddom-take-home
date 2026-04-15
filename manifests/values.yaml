@@ -17,7 +17,7 @@ api:
     limits:
       cpu: "100m"
       memory: "64Mi"
-  message: "Hello world 1"
+  message: "Hello world 2"
 
 postgres:
   image: postgres:15
