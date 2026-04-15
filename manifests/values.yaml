@@ -12,7 +12,7 @@ api:
   port: 5678
   resources:
     requests:
-      cpu: "25m"
+      cpu: "50m"
       memory: "32Mi"
     limits:
       cpu: "100m"
