@@ -1,4 +1,4 @@
-.PHONY: cluster-up cluster-down ingress-up controller clean simulate-open simulate-sync simulate-close
+.PHONY: cluster-up cluster-down ingress-up controller clean simulate-open simulate-sync simulate-close sync-local-values
 
 CLUSTER_NAME ?= ephemeral-envs
 PR           ?= 1
@@ -18,7 +18,7 @@ load:
 	kind load docker-image $(IMAGE_NAME) --name $(CLUSTER_NAME)
 
 deploy-controller: build load
-	kubectl apply -f manifests/controller.yaml
+	envsubst < manifests/controller.yaml | kubectl apply -f -
 	@echo "✅ Controller deployed to cluster"
 
 # Update your setup to include the deployment
@@ -52,7 +52,7 @@ ingress-up:
 # ── Controller ─────────────────────────────────────────────────────────────────
 
 controller:
-	cd controller && uvicorn main:app --reload --port 8080
+	cd controller && LOCAL_MANIFESTS_PATH=$(CURDIR)/manifests uvicorn main:app --reload --port 8080
 
 clean:
 	kubectl get namespaces -o name | grep "namespace/pr-" | xargs -r kubectl delete
@@ -60,11 +60,16 @@ clean:
 
 # ── Simulate PR webhooks (local dev) ──────────────────────────────────────────
 
-simulate-open:
+simulate-open: sync-local-values
 	@./scripts/simulate-pr.sh open $(PR)
 
-simulate-sync:
+simulate-sync: sync-local-values
 	@./scripts/simulate-pr.sh sync $(PR)
 
 simulate-close:
 	@./scripts/simulate-pr.sh close $(PR)
+
+sync-local-values:
+	@kubectl create configmap local-values-override \
+	  --from-file=values.yaml=manifests/values.yaml \
+	  --dry-run=client -o yaml | kubectl apply -f -

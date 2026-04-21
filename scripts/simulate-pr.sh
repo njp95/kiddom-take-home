@@ -10,23 +10,29 @@ set -euo pipefail
 
 ACTION="${1:-open}"
 PR_NUMBER="${2:-1}"
-SHA="${3:-$(head -c 4 /dev/urandom | xxd -p)}"
+SHA="${3:-$(git rev-parse HEAD 2>/dev/null || echo main)}"
 CONTROLLER_URL="${CONTROLLER_URL:-}"
 
-# If no CONTROLLER_URL is set, port-forward to the in-cluster controller
+# If no CONTROLLER_URL is set, prefer a locally-running controller (make controller),
+# and fall back to port-forwarding to the in-cluster controller.
 if [ -z "$CONTROLLER_URL" ]; then
-  echo "No CONTROLLER_URL set — port-forwarding to lifecycle-controller..."
-  kubectl port-forward deployment/lifecycle-controller 8080:8080 >/dev/null 2>&1 &
-  PF_PID=$!
-  trap 'kill "$PF_PID" 2>/dev/null; wait "$PF_PID" 2>/dev/null' EXIT
+  if curl -s http://127.0.0.1:8080/health >/dev/null 2>&1; then
+    echo "Using local controller at http://127.0.0.1:8080"
+    CONTROLLER_URL="http://127.0.0.1:8080"
+  else
+    echo "No local controller found — port-forwarding to lifecycle-controller..."
+    kubectl port-forward deployment/lifecycle-controller 8080:8080 >/dev/null 2>&1 &
+    PF_PID=$!
+    trap 'kill "$PF_PID" 2>/dev/null; wait "$PF_PID" 2>/dev/null' EXIT
 
-  # Wait up to 5s for the port-forward to be ready
-  for i in $(seq 1 10); do
-    if curl -s http://127.0.0.1:8080/health >/dev/null 2>&1; then break; fi
-    sleep 0.5
-  done
+    # Wait up to 5s for the port-forward to be ready
+    for i in $(seq 1 10); do
+      if curl -s http://127.0.0.1:8080/health >/dev/null 2>&1; then break; fi
+      sleep 0.5
+    done
 
-  CONTROLLER_URL="http://127.0.0.1:8080"
+    CONTROLLER_URL="http://127.0.0.1:8080"
+  fi
 fi
 
 # Map friendly aliases → GitHub action strings

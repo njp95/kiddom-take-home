@@ -39,7 +39,7 @@ spec:
         - name: api
           image: {{ api.image }}
           args:
-            - "-text=Hello from PR #{{ pr_number }} (sha={{ image_tag }})"
+            - "-text={{ api.message }}"
             - "-listen=:{{ api.port }}"
           ports:
             - containerPort: {{ api.port }}

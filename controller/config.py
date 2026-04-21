@@ -20,5 +20,11 @@ REAPER_INTERVAL_MINUTES = int(os.getenv("REAPER_INTERVAL", "5"))
 # ── Security ───────────────────────────────────────────────────────────────────
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 
+# ── Local dev ──────────────────────────────────────────────────────────────────
+# When set, templates and values.yaml are read from this local directory instead
+# of fetched from GitHub. Intended for use with simulate-pr.sh so local edits to
+# manifests/values.yaml are reflected without committing/pushing.
+LOCAL_MANIFESTS_PATH = os.getenv("LOCAL_MANIFESTS_PATH", "")
+
 # ── Kubernetes ─────────────────────────────────────────────────────────────────
 KUBECONFIG_PATH = os.getenv("KUBECONFIG", None)

@@ -62,15 +62,15 @@ spec:
         - name: GITHUB_REPO
           value: "njp95/kiddom-take-home"
         - name: GITHUB_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: controller-secrets
-              key: GITHUB_TOKEN
+          value: "${GITHUB_TOKEN}"
         # Overrides the git ref used to fetch templates and values. Set to "main"
         # here so that simulate-pr.sh (which generates synthetic SHAs) still works
         # against a real cluster. Remove this in production to fetch from the PR branch.
-        - name: TEMPLATE_REF
-          value: "main"
+        # TEMPLATE_REF: uncomment and set to "main" to force all environments to fetch
+        # templates from main regardless of PR SHA — useful when simulating webhooks
+        # locally with synthetic SHAs that don't exist in the remote repo.
+        # - name: TEMPLATE_REF
+        #   value: "main"
 
       - name: smee-sidecar
         image: node:18-slim
